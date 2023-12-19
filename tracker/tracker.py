@@ -13,18 +13,21 @@ class Tracks(object):
 		self.KF.correct(np.matrix(detection).reshape(2,1))
 		self.trace = deque(maxlen=20)
 		self.prediction = detection.reshape(1,2)
+		self.detection = detection.reshape(1,2)
 		self.trackId = trackId
 		self.skipped_frames = 0
+		self.step = 0
 
 	def predict(self):
 		self.prediction = np.array(self.KF.predict()).reshape(1,2)
+		
 	def update(self,detection):
 		self.KF.correct(np.matrix(detection).reshape(2,1))
 
 
 class Tracker(object):
 	"""docstring for Tracker"""
-	def __init__(self, dist_threshold=150, max_frame_skipped=30, max_trace_length=5):
+	def __init__(self, dist_threshold=150, max_frame_skipped=30, max_trace_length=5, minRoi=0, maxRoi=0):
 		super(Tracker, self).__init__()
 		self.dist_threshold = dist_threshold
 		self.max_frame_skipped = max_frame_skipped
@@ -40,16 +43,27 @@ class Tracker(object):
 			del self.tracks[i] # Assume self.tracks = [track0, track1, track2, track3, track4, track5] del self.track[0] @ i=1 ->  [track1, track2, track3, track4, track5] 
 		self.previous_index_tracks = len(self.tracks) # Update previous_index_tracks
 
-		
-	
 	def predict(self):
+		print(f"#############################################################################################")
+		print(f"########### Before UPDATE #################")
+		print(f"Predict: {len(self.tracks)}")
+		for j in range(len(self.tracks)):
+			print(f"{self.tracks[j].prediction}")
+
 		if len(self.tracks) != 0:
 			for i in range(len(self.tracks)):
 				self.tracks[i].predict() #Update predict value Xp(PredictedState), Pp(errorCovraiance)
+				print(f"self.prediction: {self.tracks[i].prediction}")
 				self.tracks[i].trace.append(self.tracks[i].prediction)
 	
 	def update(self, detections):
-		if (detections.shape[0] >= self.previous_index_tracks) and (detections.shape[0] != 0) : #Check if index of tracks are greater or equal than previous one
+		print(f"Detection: ")
+		print(f"{detections}")
+		print(f"########### Before UPDATE #################")
+
+	
+		if (detections.shape[0] >= self.previous_index_tracks) and (detections.shape[0] != 0): #Check if index of tracks are greater or equal than previous one
+			print(f"####### NORNAL MODE #######")
 			if len(self.tracks) == 0: #Check if first time running
 				for i in range(detections.shape[0]): #Loop to get all detections
 					track = Tracks(detections[i], self.trackId) #Init Tracks from 0 to n
@@ -64,8 +78,7 @@ class Tracker(object):
 				diff = np.linalg.norm(self.tracks[i].prediction - detections.reshape(-1,2), axis=1) # Use Normalization 2 for compare Prediction@[k-1] and Real
 				cost.append(diff)
 			""" ############################# """
-				
-			cost = np.array(cost)*0.1
+			cost = np.array(cost)
 			row, col = linear_sum_assignment(cost) # Minimum Assignment row = [0,1,2,3,n], col = [ass0,ass1,ass2,assn]
 			assignment = [-1]*N # Initial null assignments
 			for i in range(len(row)):
@@ -74,9 +87,12 @@ class Tracker(object):
 
 			un_assigned_tracks = []
 
+			#Check RedZone
+
+
 			for i in range(len(assignment)): #Loop for finding un_assignments
 				if assignment[i] != -1: # Check If assignments has been assigned
-					if (cost[i][assignment[i]] > self.dist_threshold): # If assigned track is exceeding to distance threshold, It will be declared to unassigned track
+					if (cost[i][assignment[i]] > self.dist_threshold) and (self.tracks[i].step > 20): # If assigned track is exceeding to distance threshold, It will be declared to unassigned track
 						assignment[i] = -1 # Assign which track to -1
 						un_assigned_tracks.append(i) # Append to un_assigned_tracks
 					else:
@@ -86,7 +102,6 @@ class Tracker(object):
 			del_tracks = []
 			for i in range(len(self.tracks)):
 				if self.tracks[i].skipped_frames > self.max_frame_skipped:
-					print(f"Skipped: {self.tracks[i].skipped_frames}")
 					del_tracks.append(i)
 
 			if len(del_tracks) > 0:
@@ -101,9 +116,17 @@ class Tracker(object):
 					self.tracks.append(track)
 					self.trackId +=1
 
+			print(f"############################# Assignments #############################")
+			for ass in assignment:
+				print(ass)
+			print(f"############################# Assignments #############################")
+
+
 			for i in range(len(assignment)):
 				if(assignment[i] != -1):
 					self.tracks[i].skipped_frames = 0
+					self.tracks[i].detection = detections[assignment[i]]
+					print(f"UPDATE DETECTION :{detections[assignment[i]]}")
 					self.tracks[i].update(detections[assignment[i]]) # Update State
 
 			""" Update Previous equals current index tracks """
@@ -111,10 +134,10 @@ class Tracker(object):
 
 		elif (detections.shape[0] < self.previous_index_tracks) : #Check if index of tracks are greater or equal than previous one
 			if detections.shape[0] > 0:
+				print(f"####### Special CASE 1 MODE #######")
 				N = len(self.tracks)
 				M = len(detections)
 				cost = []
-
 				preds_all = []
 				for i in range(N):
 					preds_all.append(self.tracks[i].prediction[0])
@@ -146,6 +169,7 @@ class Tracker(object):
 				for det_index, i in enumerate(assignment):
 					if(assignment[i] != -1):
 						#self.tracks[i].skipped_frames = 0
+						self.tracks[i].detection = detections[assignment[i]]
 						self.tracks[i].update(detections[det_index]) # Update State
 
 				"""
@@ -163,9 +187,6 @@ class Tracker(object):
 				print(f"{len(self.tracks)}")
 				"""
 
-
-
-
 				""" Check Max Distance """
 				"""
 				for i in range(len(assignment)): #Loop for finding un_assignments
@@ -177,7 +198,6 @@ class Tracker(object):
 				"""
 
 				""" Delete Tracks """
-				print(f"Unsigned Tracks: {un_assigned_tracks}")
 				del_tracks = []
 				for i in un_assigned_tracks:
 					self.tracks[i].skipped_frames +=1
@@ -189,7 +209,6 @@ class Tracker(object):
 					del_tracks.sort(reverse=True) # To Remove from last to front because if we dont use reverse it will cause out of length
 					self.previous_index_tracks = M # Update previous_index_tracks
 					for i in del_tracks:
-						print(f"Deleting Tracks: {i}")
 						del self.tracks[i] # Assume self.tracks = [track0, track1, track2, track3, track4, track5] del self.track[0] @ i=1 ->  [track1, track2, track3, track4, track5] 
 						del assignment[i] # Assume self.tracks = [track0, track1, track2, track3, track4, track5] del self.track[0] @ i=1 ->  [track1, track2, track3, track4, track5]
 
@@ -197,6 +216,7 @@ class Tracker(object):
 
 
 			elif (detections.shape[0] == 0) and len(self.tracks) > 0:
+				print(f"####### Special CASE 2 MODE #######")
 				""" Predict Assigned """
 				for j in range(len(self.tracks)):
 					detections = np.append(detections , [self.tracks[j].trace[-1][0,0], self.tracks[j].trace[-1][0,1]])
@@ -224,6 +244,14 @@ class Tracker(object):
 							un_assigned_tracks.append(i) # Append to un_assigned_tracks
 
 				
+				print(f"Assignments: {assignment}")
+				for det_index, i in enumerate(assignment):
+					if(assignment[i] != -1):
+						#self.tracks[i].skipped_frames = 0
+						self.tracks[i].update(detections[det_index]) # Update State
+						self.tracks[i].detection = detections[assignment[i]]
+
+
 				del_tracks = []
 				for i in range(len(self.tracks)):
 					if self.tracks[i].skipped_frames > self.max_frame_skipped :
@@ -237,8 +265,21 @@ class Tracker(object):
 						del self.tracks[i] # Assume self.tracks = [track0, track1, track2, track3, track4, track5] del self.track[0] @ i=1 ->  [track1, track2, track3, track4, track5] 
 						del assignment[i] # Assume self.tracks = [track0, track1, track2, track3, track4, track5] del self.track[0] @ i=1 ->  [track1, track2, track3, track4, track5]
 
+				"""
 				for i in assignment:
 					if(assignment[i] != -1):
 						#self.tracks[i].skipped_frames = 0
 						self.tracks[i].update(detections[assignment[i]]) # Update State
+				"""
+		print(f"")
+		print(f"########### After UPDATE #################")
+		print(f"Predict: {len(self.tracks)}")
+		for j in range(len(self.tracks)):
+			print(f"{self.tracks[j].prediction}")
+		print(f"########### After UPDATE #################")
+		print(f"#############################################################################################")
+
+		for ind, track in enumerate(self.tracks):
+			track.step += 1
+			
 

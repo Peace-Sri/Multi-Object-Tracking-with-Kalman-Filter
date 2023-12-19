@@ -7,11 +7,12 @@ except Exception as e:
 
 #################### Import Section ends here ################################
 
+FPS = 30
 
 class KalmanFilter(object):
 	"""docstring for KalmanFilter"""
 
-	def __init__(self, dt=1,stateVariance=1,measurementVariance=1, 
+	def __init__(self, dt=1/FPS,stateVariance=1,measurementVariance=1, 
 														method="Velocity" ):
 		super(KalmanFilter, self).__init__()
 		self.method = method
