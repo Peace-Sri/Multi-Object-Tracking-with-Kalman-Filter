@@ -50,6 +50,26 @@ class Tracker(object):
 	def update(self, detections):
 	
 		if (detections.shape[0] >= self.previous_index_tracks) and (detections.shape[0] != 0): #Check if index of tracks are greater or equal than previous one
+
+			""" In Case: Det > Pred """
+			"""   Det0 Det1 Det2
+				  #############
+			Pred0 # 0 # 9 # 9 #
+				  #############
+			Pred1 # 0 # 9 # 9 #
+				  #############
+			"""
+
+			""" In Case: Det = Pred """
+			"""   Det0 Det1 
+				  #########
+			Pred0 # 0 # 9 #
+				  #########
+			Pred1 # 0 # 9 #
+				  #########
+			"""
+
+
 			if len(self.tracks) == 0: #Check if first time running
 				for i in range(detections.shape[0]): #Loop to get all detections
 					track = Tracks(detections[i], self.trackId) #Init Tracks from 0 to n
@@ -114,6 +134,8 @@ class Tracker(object):
 			self.previous_index_tracks = detections.shape[0]
 
 		elif (detections.shape[0] < self.previous_index_tracks) : #Check if index of tracks are greater or equal than previous one
+
+			
 			if detections.shape[0] > 0:
 				N = len(self.tracks)
 				M = len(detections)
@@ -170,6 +192,14 @@ class Tracker(object):
 
 
 			elif (detections.shape[0] == 0) and len(self.tracks) > 0:
+
+				""" In Case: Pred > Det and Det = 0 """
+				"""  Pred0  Pred1 Pred2
+					 ###################
+					 #  5  #  6  #  7  #
+					 ###################
+				"""
+
 				""" Predict Assigned """
 				for j in range(len(self.tracks)):
 					detections = np.append(detections , [self.tracks[j].detection[0,0], self.tracks[j].detection[0,1]])
